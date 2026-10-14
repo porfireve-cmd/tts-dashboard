@@ -2406,41 +2406,25 @@ function updateReportDateFromFileName(name) {
 
 // Загружает файл напрямую в Vercel Blob через клиентский upload.
 // Возвращает URL файла в blob-хранилище.
+// Загружает файл напрямую в Vercel Blob через официальный SDK.
+// Возвращает URL файла в blob-хранилище.
 async function uploadToBlob(file) {
+  const { upload } = await import('https://esm.sh/@vercel/blob/client@latest');
+
   logUpload('Запрос токена на загрузку…');
-  var tokenResp = await fetch(API_BASE + '/api/upload-token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ filename: file.name, contentType: file.type || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
-  });
-  if (!tokenResp.ok) {
-    var txt = await tokenResp.text().catch(function(){ return ''; });
-    throw new Error('upload-token: HTTP ' + tokenResp.status + ' ' + txt.slice(0,200));
-  }
-  var tokenJson = await tokenResp.json();
-  logUpload('Токен получен. Загружаю файл в Blob…');
 
-  var uploadUrl = tokenJson.uploadUrl || tokenJson.url || tokenJson.clientToken && tokenJson.clientToken.uploadUrl;
-  if (!uploadUrl) throw new Error('upload-token: не вернул uploadUrl');
-
-  // Vercel Blob client upload: PUT с телом файла
-  var putResp = await fetch(uploadUrl, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': file.type || 'application/octet-stream',
-      'x-content-type': file.type || 'application/octet-stream'
+  const newBlob = await upload(file.name, file, {
+    access: 'public',
+    handleUploadUrl: API_BASE + '/api/upload-token',
+    onUploadProgress: ({ loaded, total }) => {
+      const pct = Math.round((loaded / total) * 100);
+      setUploadProgress(pct);
+      document.getElementById('uploadStatus').textContent = 'Загрузка в Blob: ' + pct + '%';
     },
-    body: file
   });
-  if (!putResp.ok) {
-    var t2 = await putResp.text().catch(function(){ return ''; });
-    throw new Error('blob PUT: HTTP ' + putResp.status + ' ' + t2.slice(0,200));
-  }
-  var putJson = await putResp.json().catch(function(){ return {}; });
-  var fileUrl = putJson.url || putJson.blobUrl || tokenJson.blobUrl;
-  if (!fileUrl) throw new Error('blob PUT: не вернул url файла');
-  logUpload('Файл загружен в Blob: ' + fileUrl, 'ok');
-  return fileUrl;
+
+  logUpload('Файл загружен в Blob: ' + newBlob.url, 'ok');
+  return newBlob.url;
 }
 
 async function handleFile(file) {
